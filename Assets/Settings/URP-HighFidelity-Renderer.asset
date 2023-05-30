@@ -40,7 +40,8 @@ MonoBehaviour:
       type: 3}
   m_RendererFeatures:
   - {fileID: -1878332245247344467}
-  m_RendererFeatureMap: adc0de57c6d2eee5
+  - {fileID: 8317820478044324669}
+  m_RendererFeatureMap: adc0de57c6d2eee53d434db3a7d56e73
   m_UseNativeRenderPass: 0
   postProcessData: {fileID: 11400000, guid: 41439944d30ece34e96484bdb6645b55, type: 2}
   xrSystemData: {fileID: 11400000, guid: 60e1133243b97e347b653163a8c01b64, type: 2}
@@ -80,3 +81,27 @@ MonoBehaviour:
   m_ClusteredRendering: 0
   m_TileSize: 32
   m_IntermediateTextureMode: 1
+--- !u!114 &8317820478044324669
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b10a45f046229f546a13af18c640dd32, type: 3}
+  m_Name: Volumetric Light Feature
+  m_EditorClassIdentifier: 
+  m_Active: 1
+  setting:
+    Resolution: 1
+    RandomSeed: 0
+    ColorTint: {r: 1, g: 0.30584925, b: 0.25943398, a: 0.5019608}
+    MieG: 0.76
+    ExtictionFactor: 0.01
+    ShadowStrength: 0.5
+    BlurSetting:
+      Spread: 0.005
+      ColorSigma: 0.1
+      SpaceSigma: 10
