@@ -47,11 +47,6 @@ Shader "Postprocessing/VolumetricLight"
 
         #define random(seed) sin(seed * 641.5467987313875 + 1.943856175)
 
-        inline float4 RGBToYCoCg(float4 RGB)
-        {
-            return float4(RGBToYCoCg(RGB.xyz), RGB.w);
-        }
-
         float ComputePhaseMie(float theta, float g)
         {
             float g2 = g * g;
