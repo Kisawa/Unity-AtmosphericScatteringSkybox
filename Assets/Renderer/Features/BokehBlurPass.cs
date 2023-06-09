@@ -4,11 +4,14 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
-public class BilateralBlurPass : ScriptableRenderPass, IPass
+public class BokehBlurPass : ScriptableRenderPass, IPass
 {
     public static int _Spread = Shader.PropertyToID("_Spread");
-    public static int _ColorSigma = Shader.PropertyToID("_ColorSigma");
-    public static int _SpaceSigma = Shader.PropertyToID("_SpaceSigma");
+    public static int _Shape = Shader.PropertyToID("_Shape");
+    public static int _Iteration = Shader.PropertyToID("_Iteration");
+    public static int _GoldenAngle = Shader.PropertyToID("_GoldenAngle");
+    public static int _BokehHardness = Shader.PropertyToID("_BokehHardness");
+    public static string _Keyword_CurlyTrick = "_CURLY_BLUR";
     static readonly int _TempBufferId = Shader.PropertyToID("_TempBuffer");
 
     Setting setting;
@@ -16,12 +19,12 @@ public class BilateralBlurPass : ScriptableRenderPass, IPass
     RenderTargetIdentifier tempBuffer;
     int tempBufferId = -1;
 
-    public BilateralBlurPass()
+    public BokehBlurPass()
     {
         CreateMaterial();
     }
 
-    public BilateralBlurPass(Setting setting)
+    public BokehBlurPass(Setting setting)
     {
         this.setting = setting;
         CreateMaterial();
@@ -48,7 +51,7 @@ public class BilateralBlurPass : ScriptableRenderPass, IPass
         if (mat == null)
             return;
         CommandBuffer cmd = CommandBufferPool.Get();
-        using (new ProfilingScope(cmd, new ProfilingSampler("Bilateral Blur")))
+        using (new ProfilingScope(cmd, new ProfilingSampler("Bokeh Blur")))
         {
             context.ExecuteCommandBuffer(cmd);
             cmd.Clear();
@@ -76,10 +79,10 @@ public class BilateralBlurPass : ScriptableRenderPass, IPass
 
     void CreateMaterial()
     {
-        Shader shader = Shader.Find("Postprocessing/BilateralBlur");
+        Shader shader = Shader.Find("Postprocessing/BokehBlur");
         if (shader == null)
         {
-            Debug.LogError("BilateralBlurPass: shader not found.");
+            Debug.LogError("BokehBlurPass: shader not found.");
             return;
         }
         mat = CoreUtils.CreateEngineMaterial(shader);
@@ -88,20 +91,32 @@ public class BilateralBlurPass : ScriptableRenderPass, IPass
     [System.Serializable]
     public class Setting : PassSettingBase
     {
-        [Range(0, .1f)]
-        public float Spread = .001f;
-        [Range(.01f, 1)]
-        public float ColorSigma = .1f;
-        [Range(1, 20)]
-        public float SpaceSigma = 10;
+        [Range(1, 64)]
+        public int Iteration = 16;
+        [Range(.01f, 3)]
+        public float Spread = .75f;
+        [Range(3, 10)]
+        public int Shape = 6;
+        [Range(.1f, 5)]
+        public float BokehHardness = 1;
+        [Header("Curly Trick")]
+        public bool TrickOn = false;
+        [Range(0, 3.1415f)]
+        public float GoldenAngle = 2.3398f;
 
         public override void InjectMaterial(Material mat)
         {
             if (mat == null)
                 return;
             mat.SetFloat(_Spread, Spread);
-            mat.SetFloat(_ColorSigma, ColorSigma);
-            mat.SetFloat(_SpaceSigma, SpaceSigma);
+            mat.SetInt(_Shape, Shape);
+            mat.SetInt(_Iteration, Iteration);
+            mat.SetFloat(_GoldenAngle, GoldenAngle);
+            mat.SetFloat(_BokehHardness, BokehHardness);
+            if (TrickOn)
+                mat.EnableKeyword(_Keyword_CurlyTrick);
+            else
+                mat.DisableKeyword(_Keyword_CurlyTrick);
         }
     }
 
@@ -109,18 +124,29 @@ public class BilateralBlurPass : ScriptableRenderPass, IPass
     public class SettingVolume : PassSettingBase
     {
         [Space(10)]
-        [Header("Bilateral Blur")]
-        public ClampedFloatParameter Spread = new ClampedFloatParameter(0, 0, .1f);
-        public ClampedFloatParameter ColorSigma = new ClampedFloatParameter(.1f, .01f, 1);
-        public ClampedFloatParameter SpaceSigma = new ClampedFloatParameter(10, 1, 20);
+        [Header("Bokeh Blur")]
+        public ClampedIntParameter Iteration = new ClampedIntParameter(0, 0, 64);
+        public ClampedFloatParameter Spread = new ClampedFloatParameter(.75f, 0, 3);
+        public ClampedIntParameter Shape = new ClampedIntParameter(6, 3, 10);
+        public ClampedFloatParameter BokehHardness = new ClampedFloatParameter(1, .1f, 5);
+        [Header("Curly Trick")]
+        public BoolParameter TrickOn = new BoolParameter(false);
+        [Range(0, 3.1415f)]
+        public ClampedFloatParameter GoldenAngle = new ClampedFloatParameter(2.3398f, 0, 3.1415f);
 
         public override void InjectMaterial(Material mat)
         {
             if (mat == null)
                 return;
             mat.SetFloat(_Spread, Spread.value);
-            mat.SetFloat(_ColorSigma, ColorSigma.value);
-            mat.SetFloat(_SpaceSigma, SpaceSigma.value);
+            mat.SetInt(_Shape, Shape.value);
+            mat.SetInt(_Iteration, Iteration.value);
+            mat.SetFloat(_GoldenAngle, GoldenAngle.value);
+            mat.SetFloat(_BokehHardness, BokehHardness.value);
+            if (TrickOn.value)
+                mat.EnableKeyword(_Keyword_CurlyTrick);
+            else
+                mat.DisableKeyword(_Keyword_CurlyTrick);
         }
     }
 }

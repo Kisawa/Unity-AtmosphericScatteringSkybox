@@ -1,3 +1,4 @@
+using CustomVolumeComponent;
 using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
@@ -5,23 +6,23 @@ using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 
-public class VolumetricLightFeature : ScriptableRendererFeature
+public class SunShaftFeature : ScriptableRendererFeature
 {
-    public Setting setting = new Setting();
+    static int _ColorTint = Shader.PropertyToID("_ColorTint");
+    static int _RandomSeed = Shader.PropertyToID("_RandomSeed");
+    static int _MieG = Shader.PropertyToID("_MieG");
+    static int _ExtictionFactor = Shader.PropertyToID("_ExtictionFactor");
+    static int _ShadowStrength = Shader.PropertyToID("_ShadowStrength");
 
-    class VolumetricLightPass : ScriptableRenderPass
+    class SunShaftPass : ScriptableRenderPass, IPass
     {
-        static readonly int _VolumetricLightBufferId = Shader.PropertyToID("_VolumetricLightBuffer");
+        static readonly int _SunShaftBufferId = Shader.PropertyToID("_SunShaftBuffer");
         static readonly int _LightTempBufferId = Shader.PropertyToID("_LightTempBuffer");
         static readonly int _TempBufferId = Shader.PropertyToID("_TempBuffer");
         static int _InverseVP = Shader.PropertyToID("_InverseVP");
-        static int _ColorTint = Shader.PropertyToID("_ColorTint");
-        static int _RandomSeed = Shader.PropertyToID("_RandomSeed");
-        static int _MieG = Shader.PropertyToID("_MieG");
-        static int _ExtictionFactor = Shader.PropertyToID("_ExtictionFactor");
-        static int _ShadowStrength = Shader.PropertyToID("_ShadowStrength");
 
-        Setting setting;
+        public SettingVolume settingVolume { get; set; }
+
         Material mat;
         Material bilateralBlurMat;
         RenderTargetIdentifier volumetricLightBuffer;
@@ -31,24 +32,23 @@ public class VolumetricLightFeature : ScriptableRendererFeature
         RenderTargetIdentifier tempBuffer;
         int tempBufferId = -1;
 
-        public VolumetricLightPass(Setting setting)
+        public SunShaftPass()
         {
-            this.setting = setting;
-            Shader shader = Shader.Find("Postprocessing/VolumetricLight");
+            Shader shader = Shader.Find("Postprocessing/SunShaft");
             if (shader == null)
-                Debug.LogError("VolumetricLightPost: shader not found.");
+                Debug.LogError("SunShaftPass: shader not found.");
             else
                 mat = CoreUtils.CreateEngineMaterial(shader);
             Shader bilateralBlurShader = Shader.Find("Postprocessing/BilateralBlur");
             if (bilateralBlurShader == null)
-                Debug.LogError("VolumetricLightPost: BilateralBlur shader not found.");
+                Debug.LogError("SunShaftPass: BilateralBlur shader not found.");
             else
                 bilateralBlurMat = CoreUtils.CreateEngineMaterial(bilateralBlurShader);
         }
 
         public override void OnCameraSetup(CommandBuffer cmd, ref RenderingData renderingData)
         {
-            if (mat == null)
+            if (mat == null || settingVolume == null)
             {
                 volumetricLightId = -1;
                 lightTempBufferId = -1;
@@ -59,9 +59,9 @@ public class VolumetricLightFeature : ScriptableRendererFeature
             blitTargetDescriptor.depthBufferBits = 0;
             blitTargetDescriptor.msaaSamples = 1;
 
-            int lightTexWidth = Mathf.RoundToInt(blitTargetDescriptor.width * setting.Resolution);
-            int lightTexHeight = Mathf.RoundToInt(blitTargetDescriptor.height * setting.Resolution);
-            volumetricLightId = _VolumetricLightBufferId;
+            int lightTexWidth = Mathf.RoundToInt(blitTargetDescriptor.width * settingVolume.Resolution.value);
+            int lightTexHeight = Mathf.RoundToInt(blitTargetDescriptor.height * settingVolume.Resolution.value);
+            volumetricLightId = _SunShaftBufferId;
             cmd.GetTemporaryRT(volumetricLightId, lightTexWidth, lightTexHeight, 0, FilterMode.Bilinear, RenderTextureFormat.RG16);
             volumetricLightBuffer = new RenderTargetIdentifier(volumetricLightId);
 
@@ -76,10 +76,10 @@ public class VolumetricLightFeature : ScriptableRendererFeature
 
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData)
         {
-            if (mat == null)
+            if (mat == null || settingVolume == null)
                 return;
             CommandBuffer cmd = CommandBufferPool.Get();
-            using (new ProfilingScope(cmd, new ProfilingSampler("Volumetric Light")))
+            using (new ProfilingScope(cmd, new ProfilingSampler("Sun Shaft")))
             {
                 context.ExecuteCommandBuffer(cmd);
                 cmd.Clear();
@@ -87,20 +87,14 @@ public class VolumetricLightFeature : ScriptableRendererFeature
                 Matrix4x4 p = GL.GetGPUProjectionMatrix(renderingData.cameraData.GetProjectionMatrix(), false);
                 Matrix4x4 v = renderingData.cameraData.GetViewMatrix();
                 mat.SetMatrix(_InverseVP, Matrix4x4.Inverse(p * v));
-                mat.SetFloat(_RandomSeed, setting.RandomSeed);
-                mat.SetColor(_ColorTint, setting.ColorTint);
-                mat.SetFloat(_MieG, setting.MieG);
-                mat.SetFloat(_ExtictionFactor, setting.ExtictionFactor);
-                mat.SetFloat(_ShadowStrength, setting.ShadowStrength);
+                InjectMaterial(settingVolume);
                 Blit(cmd, cameraColorTarget, lightTempBuffer, mat, 0);
 
-                if (bilateralBlurMat == null)
+                if (bilateralBlurMat == null || settingVolume.BlurSetting.Spread.value == 0)
                     Blit(cmd, lightTempBuffer, volumetricLightBuffer);
                 else
                 {
-                    bilateralBlurMat.SetFloat(BilateralBlurPass._Spread, setting.BlurSetting.Spread);
-                    bilateralBlurMat.SetFloat(BilateralBlurPass._ColorSigma, setting.BlurSetting.ColorSigma);
-                    bilateralBlurMat.SetFloat(BilateralBlurPass._SpaceSigma, setting.BlurSetting.SpaceSigma);
+                    settingVolume.BlurSetting.InjectMaterial(bilateralBlurMat);
                     Blit(cmd, lightTempBuffer, volumetricLightBuffer, bilateralBlurMat, 0);
                 }
 
@@ -121,39 +115,86 @@ public class VolumetricLightFeature : ScriptableRendererFeature
             if (tempBufferId != -1)
                 cmd.ReleaseTemporaryRT(tempBufferId);
         }
+
+        public void InjectMaterial(PassSettingBase setting)
+        {
+            if (setting == null)
+                return;
+            setting.InjectMaterial(mat);
+        }
     }
 
-    VolumetricLightPass pullBlurPass;
+    SunShaftPass sunShaftPass;
 
     public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
     {
         if (renderingData.cameraData.isSceneViewCamera || renderingData.cameraData.isPreviewCamera)
             return;
-        renderer.EnqueuePass(pullBlurPass);
+        var stack = VolumeManager.instance.stack;
+        SunShaft sunShaft = stack.GetComponent<SunShaft>();
+        if (!sunShaft.IsActive())
+            return;
+        sunShaftPass.settingVolume = sunShaft.Setting;
+        renderer.EnqueuePass(sunShaftPass);
     }
 
     public override void Create()
     {
-        name = "Volumetric Light Feature";
-        pullBlurPass = new VolumetricLightPass(setting);
-        pullBlurPass.renderPassEvent = RenderPassEvent.BeforeRenderingTransparents;
+        name = "Sun Shaft Feature";
+        sunShaftPass = new SunShaftPass();
+        sunShaftPass.renderPassEvent = RenderPassEvent.BeforeRenderingTransparents;
     }
 
     [System.Serializable]
-    public class Setting
+    public class Setting : PassSettingBase
     {
         [Range(.1f, 1)]
         public float Resolution = 1;
         public float RandomSeed;
         [ColorUsage(true, true)]
-        public Color ColorTint;
+        public Color ColorTint = new Color(.9f, .6f, .4f, .5f);
         [Range(0, 1)]
         public float MieG = .76f;
-        [Range(0, .2f)]
+        [Range(0, .1f)]
         public float ExtictionFactor = .01f;
         [Range(0, 1)]
         public float ShadowStrength = .5f;
 
         public BilateralBlurPass.Setting BlurSetting = new BilateralBlurPass.Setting();
+
+        public override void InjectMaterial(Material mat)
+        {
+            if (mat == null)
+                return;
+            mat.SetFloat(_RandomSeed, RandomSeed);
+            mat.SetColor(_ColorTint, ColorTint);
+            mat.SetFloat(_MieG, MieG);
+            mat.SetFloat(_ExtictionFactor, ExtictionFactor);
+            mat.SetFloat(_ShadowStrength, ShadowStrength);
+        }
+    }
+
+    [System.Serializable]
+    public class SettingVolume : PassSettingBase
+    {
+        public ClampedFloatParameter Resolution = new ClampedFloatParameter(0, 0, 1);
+        public FloatParameter RandomSeed = new FloatParameter(0);
+        public ColorParameter ColorTint = new ColorParameter(new Color(.9f, .6f, .4f, .5f), true, true, true);
+        public ClampedFloatParameter MieG = new ClampedFloatParameter(.76f, 0, 1);
+        public ClampedFloatParameter ExtictionFactor = new ClampedFloatParameter(.01f, 0, .1f);
+        public ClampedFloatParameter ShadowStrength = new ClampedFloatParameter(.5f, 0, 1);
+
+        public BilateralBlurPass.SettingVolume BlurSetting = new BilateralBlurPass.SettingVolume();
+
+        public override void InjectMaterial(Material mat)
+        {
+            if (mat == null)
+                return;
+            mat.SetFloat(_RandomSeed, RandomSeed.value);
+            mat.SetColor(_ColorTint, ColorTint.value);
+            mat.SetFloat(_MieG, MieG.value);
+            mat.SetFloat(_ExtictionFactor, ExtictionFactor.value);
+            mat.SetFloat(_ShadowStrength, ShadowStrength.value);
+        }
     }
 }

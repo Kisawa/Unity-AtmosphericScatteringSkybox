@@ -1,11 +1,11 @@
-Shader "Postprocessing/VolumetricLight"
+Shader "Postprocessing/SunShaft"
 {
     Properties
     {
-        _MainTex ("Texture", 2D) = "white" {}
+        _MainTex("Texture", 2D) = "white" {}
     }
 
-    SubShader
+        SubShader
     {
         HLSLINCLUDE
         #pragma multi_compile _ _MAIN_LIGHT_SHADOWS
@@ -102,7 +102,6 @@ Shader "Postprocessing/VolumetricLight"
             float phaseTheta = dot(dir, _MainLightPosition.xyz);
             float phaseMie = ComputePhaseMie(phaseTheta, _MieG);
             res.x *= phaseMie;
-
             half4 col = half4(res, 0, 0);
             return col;
         }
@@ -111,8 +110,9 @@ Shader "Postprocessing/VolumetricLight"
         {
             half4 col = SAMPLE_TEXTURE2D(_BaseTex, sampler_BaseTex, input.uv);
             half2 light = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).rg;
-            col.rgb += light.x * _ColorTint.rgb * _ColorTint.a;
-            col.rgb *= lerp(1, light.y, _ShadowStrength);
+            float fade = smoothstep(0, .1, _MainLightPosition.y);
+            col.rgb += light.x * _ColorTint.rgb * _ColorTint.a * fade;
+            col.rgb *= lerp(1, light.y, _ShadowStrength * fade);
             return col;
         }
         ENDHLSL
