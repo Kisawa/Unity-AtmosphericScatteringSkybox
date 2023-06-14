@@ -74,7 +74,8 @@ Shader "Postprocessing/BokehBlur"
             sincos(_GoldenAngle, s, c);
             float2x2 rotate = float2x2(c, -s, s, c);
             half3 col = 0, sum = 0;
-            float2 angle = _Spread / _Iteration * 20;
+            float depthBlurFactor = GetDepthBlendFactor(uv, _DepthFocus, _DepthSmoothness, _DepthBlendPower);
+            float2 angle = _Spread / _Iteration * 20 * depthBlurFactor;
             [loop]
             for (int i = 1; i <= _Iteration; i++)
             {
